@@ -5,60 +5,39 @@
 #include "../core/thread_pool.hpp"
 #include "../utilities/stop_watch.hpp"
 
-#define CALL_NOTICE() (std::printf("%s called at thread %d\n", __FUNCTION__, std::this_thread::get_id()));
+#define CALL_NOTICE() (std::cout << __FUNCTION__ << " called at thread " << std::this_thread::get_id() << std::endl)
 
 class test_class {
 public:
 
-	test_class() : core(10, 10), tp(5, 1000) {
-	}
-
-	~test_class() {
-		thread1.join();
-		thread2.join();
+	test_class() : producer(1, 10, true), consumer(2, 10, false) {
 	}
 
 	void execute() {
 		CALL_NOTICE();
-		core.add(std::bind(&test_class::runner, this));
-		core.add(std::bind(&test_class::getter, this));
-	}
-
-	void run(int a, int b) {
-		std::printf("Thread %d ran\n", std::this_thread::get_id());
-		tp.add(std::bind(&test_class::test_func, this, a, b, 1));
-	}
-
-	int get() {
-		return tp.pull();
+		producer.add(std::bind(&test_class::runner, this));
+		consumer.add(std::bind(&test_class::getter, this));
 	}
 
 	int runner() {
-		for (int i = 0; i < 2; i++) {
-			run(i, i + 1);
-		}
-		return 0;
+		return test_func(1, 2, 100);
 	}
 
 	int getter() {
-		for (int i = 0; i < 2; i++) {
-			auto out = tp.pull();
-			std::printf("out%d = %d\n", i, out);
-		}
+		auto out = producer.pull();
+		std::printf("out = %d\n", out);
 		return 0;
 	}
-
 
 private:
 
 	int test_func(int a, int b, int sleep_time) {
-		std::this_thread::sleep_for(std::chrono::seconds(sleep_time));
+		std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));
 		return a + b;
 	}
 
-	std::thread thread1, thread2;
-	thread_pool<int> core;
-	thread_pool<int> tp;
+	thread_pool<int> producer;
+	thread_pool<int> consumer;
 };
 
 #endif // !__TEST_CLASS_HPP__

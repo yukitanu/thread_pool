@@ -48,7 +48,9 @@ public:
 	}
 
 	bool empty() {
-		return queue_.empty();
+		std::unique_lock<std::mutex> lock(mutex_);
+		const auto ret = queue_.empty();
+		return ret;
 	}
 
 private:

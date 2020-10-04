@@ -12,10 +12,11 @@ template <class OutputType>
 class thread_pool {
 public:
 
-	thread_pool(int thread_count, std::size_t queue_capacity)
+	thread_pool(int thread_count, std::size_t queue_capacity, bool need_output = true)
 		: is_termination_requested_(false)
 		, task_queue_(queue_capacity)
-		, output_queue_(queue_capacity) {
+		, output_queue_(queue_capacity)
+		, need_output_(need_output){
 		for (int i = 0; i < thread_count; i++) {
 			threads_.emplace_back(std::thread(main_));
 		}
@@ -29,7 +30,7 @@ public:
 		}
 	}
 
-	bool add(std::function<OutputType()>& func) {
+	bool add(const std::function<OutputType()>& func) {
 		task_queue_.enqueue(func);
 		condition_.notify_all();
 		return true;
@@ -42,10 +43,12 @@ public:
 	}
 
 	bool try_pull(OutputType& ret) {
+		assert(need_output_);
 		return output_queue_.try_dequeue(ret);
 	}
 
 	OutputType pull() {
+		assert(need_output_);
 		OutputType ret;
 		output_queue_.dequeue(ret);
 		return ret;
@@ -54,7 +57,7 @@ public:
 private:
 
 	std::function<void()> main_ = [this]() {
-		while (1) {
+		while (true) {
 			std::function<OutputType()> func;
 			{
 				std::unique_lock<std::mutex> lock(mutex_);
@@ -62,16 +65,17 @@ private:
 					if (is_termination_requested_.load()) {
 						return;
 					}
-					condition_.wait(lock);
+					condition_.wait(lock, [&]() { return !task_queue_.empty() || is_termination_requested_.load(); });
 				}
-				const auto dequeue_result = task_queue_.try_dequeue(func);
+				const auto dequeue_result = task_queue_.dequeue(func);
 				assert(dequeue_result);
 			}
-			output_queue_.enqueue(func());
+			if (need_output_) output_queue_.enqueue(func());
+			else func();
 		}
 	};
 
-
+	bool need_output_;
 	std::atomic<bool> is_termination_requested_;
 	locked_queue<std::function<OutputType()>> task_queue_;
 	locked_queue<OutputType> output_queue_;
